@@ -12,7 +12,7 @@ reduce the memory footprint of the code.
 
 ### Platform
 
-The code has been ported to be run on a test platform with the Intel
+The code has been ported to a test platform with the Intel
 Knights Landing (KNL) processor, specifically an Xeon Phi Processor
 7210, sporting 64 cores running at a base frequency of 1.3 GHz with
 DDR4-2133 memory.  The operating system is CentOS 7.2 and Intel
@@ -20,11 +20,11 @@ Parallel Studio version 17.0.1 was used.
 
 ### Code modifications
 
-The code needed to be updated to conform to the PETSC API changes in version xx to be able to run when compiled with the intel compiler and newer versions of PETSC otherwise it will fail. 
+The code needed to be updated to conform to the PETSC API changes in version 3.5 to be able to run when compiled with the Intel compiler and newer versions of PETSC otherwise it will fail. 
 
-The code does PETSC calls from within parallel regions and in an
-effort to guarantee correct operations it needs to be built with
-thread safety.
+The code does PETSC calls, specifically adding values to a matrix, from within OpenMP parallel regions and in an
+effort to guarantee correct operations PETSC needs to be built with
+thread safety that allows us to safely call some PETSC functions from parallel regions.
 
 ### Building thread safe PETSC for KNL
 
@@ -54,7 +54,7 @@ a way that favors the compiler vectorizing the code. There does appear
 to be some parts of the code that benefits from vectorization to some
 small degree. Switching on the AVX512 vectotization in the compiler reduces the time taken to complete one iteration by 4.3%. 
 
-The final compile flags we used where:
+The final compile flags we used were:
 
 ```
 -O3  -xMIC-AVX512 -qopenmp 
@@ -88,11 +88,10 @@ system used. We were able to use the case for testing up to 128 MPI
 ranks, 256 ranks did not fit into the memory of the system.
 
 The memory usage, as reported by the program itself for 32-128 MPI ranks was between 400
-and 500 MB per MPI rank for all the cases tested. For the case with 16 MPI ranks the memory usage was between 650 and 759 MB Meaning there is a significantly lower overall memory usage for the runs using fewer MPI
+and 500 MB per MPI rank for all the cases tested. For the case with 16 MPI ranks the memory usage was between 650 and 759 MB meaning there is a significantly lower overall memory usage for the runs using fewer MPI
 ranks. 
 
-The performance observed was measured from the time an iteration which
-did not output the results took, since the outputting of data currently involves a significant amount of critical sections the, the time is measured in seconds:
+To measure the performance of the code we measured the runtime for a specific time step. The time step was one that did not output any data to the output files, as the writing of the output takes a considerable amount of time and varies to much depending on what system was used. The time for one time step is measured in seconds:
 
 | MPI Ranks | 16 threads | 32 threads | 64 threads | 128 thread | 256 threads |
 |:---------:|------------|------------|------------|------------|-------------|
@@ -114,10 +113,9 @@ To compare the performance the same test case was also run on a single
 compute node consisting of two twelve core Intel Haswell E5-2690v3
 processors, running at 2,6GHz.
 
-The test where conducted with both a pure MPI run as well as only
-using 8 MPI ranks and 3 OpneMP threads per rank, the run time was
-measured for an iteration that did not output the results. The pure
-MPI case took 93 seconds and the hybrid case took 109 seconds, both
+The test were conducted with both a pure MPI run as well as only
+using 8 MPI ranks and 3 OpenMP threads per rank, the run time was
+measured for an iteration that did not output the results. The pure MPI case took 93 seconds while the hybrid case took 109 seconds, both
 faster than the fastest run on the KNL system.
 
 ## Further improvements
@@ -127,11 +125,11 @@ will actually give correct results, there are a few sections that
 currently cast doubt on the correctness of the results from the OpenMP
 variant of the code.
 
-The random number generation in the OpenMP also seems flawed since it
+The random number generation in the OpenMP version also seems flawed since it
 ends up reusing the random numbers generated in certain cases.
 
 The OpenMP variant of the code relies heavily on critical sections and
-atomic operations to do what is essentially reduction operations. At
+atomic operations to do what are essentially reduction operations. At
 least the scalar values operated on in this fashion should all be
 replaced with reductions of those variables.
 
@@ -141,26 +139,20 @@ done in them and not just reading and writing values. With these
 sections being called every 10 iterations they do have a significant
 impact on the performance.
 
-Schedule of some loops need to be changed as the load within them is
-unbalanced and will cause some threads to sit idle for most of the
-execution part of those loops.
+The schedule of some loops needs to be changed, as the load within them is unbalanced. This will reduce OpenMP synchronization overhead.
 
 Currently the code does not autovectorize well, we should explore the possibility to transform some parts of the code into being more friendly for compiler auto vectorization. With the complexity of the code rewriting it to utilize intrinsic vectorization would be a difficult thing to do.
 
-One potentially big issue in converting the code to more OpenMP
-focused is the usage of PETSC. Since PETSC relies on MPI only to
-parallelize the work it does, eventually the serial computation caused
-by it will start to dominate the runtime of the entire simulation.
+One big issue in introducing OpenMP parallelization is that PETSC only supports MPI parallelism for its solvers. This will limit the scalability of the code with respect to threads, since the non-threaded solvers in the PETSC library will start to dominate the runtime of the entire simulation
 
 ## Conclusions
 
 One of the long standing issues with the elmfire code has been the
 memory usage of the code. There are some data structures that need to
-be duplicated on every rank in the simulation, leading to a large per
-compute node memory usage in the cases with compute nodes with many
-cores. The OpenMP parallelization mitigates the memory usage issues by
+be duplicated on every rank in the simulation, leading to a large memory usage on multi-core nodes.
+The OpenMP parallelization mitigates the memory usage issues by
 not having to have the duplicate data structures for all cores in a
 node but just for each rank on that node. The savings in memory usage
-are substantial enough to warrant the usage of the OpenMP version and
+are substantial enough to warrant the use of OpenMP and
 even with the slight loss in performance still be a worthwhile effort
-to peruse.
+to pursue.
