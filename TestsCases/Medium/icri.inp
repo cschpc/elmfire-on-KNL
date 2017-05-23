@@ -1,0 +1,64 @@
+&title
+ caseName='Lashkul-v14'
+/
+
+&elm1
+ r0=0.55, a=0.078, aw=0.078, ltheta=4.71,
+ bt=2.25, ct=32d3, ea=2.1, vloop=3.d0
+/
+
+&elm2
+ dnx=146, dnym=919, dnz=8,
+ boxnx=8, boxny=10, boxnz=2, boxR=1, boxP=4,
+ inx=40
+/
+
+&elm3
+ tint=3e-8, ttint=6600e-8,
+ nene=10, nbs=60,
+ nchain=-2, queuetime=1000000
+/
+
+&elm4
+ m=270,270,270, l0=40,40,40, nz=2,2,2, n=10,10,10,
+ eorim=3, adiab=0, pni=4, vap=1,
+ plmass=5.485799e-4,2.01355321d0,16., plznum=-1,1,6
+/
+
+&elm5
+ tprof=0,0,0,
+ pltemp=120,120,100,
+ tdelta=0.02,0.2,0, tteco=1., tempe=0.043, eg=1.3,
+ dprof=0,
+ pldens=0.5e20,
+ ndelta=0.02, dteco=1., dense=0.02, eb=2.5,
+ zfr=0.0042,0.0078,0.0146,0.0179,0.0224,0.0246,0.0251,
+ dzfr=0.,0.0115,0.02505,0.04567,0.0588,0.06553,0.08
+/
+
+&elm6
+ nbin=1, binii=1, binei=1, binee=1,
+ mcr=100, mct=30, vmax=6.e7,1.e6,1.e6,
+ bgheat=0
+/
+
+&elm7
+ ineut=1, neutralTemper=0.25d0,
+ icx=0, dneu=0.01, dnw=0.02,
+ radLoss=.TRUE.
+/
+
+&elm8
+ ncondd=0, dom=5.8e9, ey=50000., wy=40000., sig=1., wz=0.,
+ cgg=0.05, rce=0.05, rde=0.03
+/
+
+&elm9
+ iquies=2, isat=12345, useDnav00=.TRUE., noiter=0, e2=5
+/
+
+&elm10
+ fullDiag=0,
+ dnr=5, dnp=6, dnen=5, dnpi=5
+/
+
