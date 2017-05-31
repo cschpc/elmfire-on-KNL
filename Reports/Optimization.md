@@ -29,12 +29,12 @@ The code also does a significant amount of reduction type operations, either val
 The main parts of the code doing reductions to arrays is the I/O and the part of the code that updates each particles effect on the field. The I/O functions are only called at specific intervals and as such are not as performance critical, in this case we solved the reductions into arrays using OpenMP atomic statements as not to increase the need for a large OpenMP stack size. The part that "updates the effect the particles have on the field updates not only the cell which the current particle resides in but also adjacent cells", when doing this in a shared memory parallel case multiple threads can easily end up wanting to update the same cells at the same time. Since we also determined this function is one of the ones where the majority of the time is spent we cannot solve these race conditions by applying atomic operations to these update since the performance penalty would be to great. In this case we need to use OpenMP reduction cause, even though it comes with an increase in the memory usage.
 
 <!-- scheduling -->
-The load distribution between the iterations of certain loops is also a thing worth exameing in this code as we found a few loops that hadan uneven load distribution. The main target here was the loop responsible for computing the interaction between particles. In this loop there is significantly more work that needs to be done in the begining of it than in the end, leading to the first threads having to do more work and the last ones sitting idle most of the time in the case where the default static scheduling is used, so for this loop dynamic scheduling was applied.
+The load distribution between the iterations of certain loops is also a thing worth examining in this code as we found a few loops that had an uneven load distribution. The main target here was the loop responsible for computing the interaction between particles. In this loop there is significantly more work that needs to be done in the beginning of it than in the end, leading to the first threads having to do more work and the last ones sitting idle most of the time in the case where the default static scheduling is used, so for this loop dynamic scheduling was applied.
 
 <!-- random number generation -->
 Parts of the code relies on random number generation, which in the original version was not generated in a way that would have been safe to be called from multiple threads. We rewrote the random number generation to be safe to be called from multiple threads. This involved giving each thread its own random number generation and seeding these with a seed that was unique to that thread. 
 
-<!-- reporducability of the results, do we need to mention anything about this ? basically the results change based on the number of OMP threads, but it did the same wiht MPI -->
+<!-- reproducibility of the results, do we need to mention anything about this ? basically the results change based on the number of OMP threads, but it did the same with MPI -->
 
 <!-- performance and memory usage -->
 
@@ -42,22 +42,22 @@ Parts of the code relies on random number generation, which in the original vers
 ### Particle order in memory
 
 <!-- Why -->
-Examining the code using the VTune profiling tool we observed that a significant amout of time was spent in the function "writing the effects of the particles on the field" specificly the part of the code where the values are written out to memory. For each particle there is rougly XX values that need to be written, the values update are at least partially adjecent to eachother, but the order the particles are updated in is fairly random since they move significantly each time step. Since the order of the particles are random it will cause the program to jump around in memory when writing the data associated witht the particles, causing a significant amount of cache misses since the prefetcher cannot predic where the next memory access will go.
+Examining the code using the VTune profiling tool we observed that a significant amount of time was spent in the function "writing the effects of the particles on the field" specifically the part of the code where the values are written out to memory. For each particle there is roughly XX values that need to be written, the values update are at least partially adjacent to each other, but the order the particles are updated in is fairly random since they move significantly each time step. Since the order of the particles are random it will cause the program to jump around in memory when writing the data associated with the particles, causing a significant amount of cache misses since the prefetcher cannot predict where the next memory access will go.
 
 <!-- what we did -->
-If we simply reorder the particles based on their position we can easily improve the performance of the writes. This has to be done every iteration, meaning we cannot use a complex sorting algortihm since any performance gains from that would immediately be eclipsed by the runtime of the sorting. When sorting the particles we ... "Ronan fill in the base idea of the method", as it offers a good balance between runtime and performance increases.
+If we simply reorder the particles based on their position we can easily improve the performance of the writes. This has to be done every iteration, meaning we cannot use a complex sorting algorithm since any performance gains from that would immediately be eclipsed by the runtime of the sorting. When sorting the particles we ... "Ronan fill in the base idea of the method", as it offers a good balance between runtime and performance increases.
 
 <!-- performance -->
 
 
 ### Binning particles to remove the need for OpenMP reductions
 <!-- why -->
-One of the major drawback of our OpenMP version was the reliance on reductions, due to how the code that sets up the particles effect on the field was structured, tha array for the field can have multiple threads update the same value at the same time, and the only way to solve that and maintain performance was to mark the entire array as a reduction variable, which increased the memory requirement of the code. 
+One of the major drawback of our OpenMP version was the reliance on reductions, due to how the code that sets up the particles effect on the field was structured, the array for the field can have multiple threads update the same value at the same time, and the only way to solve that and maintain performance was to mark the entire array as a reduction variable, which increased the memory requirement of the code. 
 
 <!-- why did this work -->
-A better solution is to divide particles into speperate bins, each bin contains a subset of particles whos writes go to a specific part of the array. We can then for each bin create a thread than handles the particles within that bin, the thread would create its own subset of the array to where the writes would initially go, once the thread has processed all the particles the local chunk of the array would be written out to the global array, taking care only to allow one thread to write to the global array at one time. That way we completely eliminate the need to mark the array as a reduction variable, saving the need for a larger OpenMP stack size and saving memory usage.
+A better solution is to divide particles into separate bins, each bin contains a subset of particles whose writes go to a specific part of the array. We can then for each bin create a thread than handles the particles within that bin, the thread would create its own subset of the array to where the writes would initially go, once the thread has processed all the particles the local chunk of the array would be written out to the global array, taking care only to allow one thread to write to the global array at one time. That way we completely eliminate the need to mark the array as a reduction variable, saving the need for a larger OpenMP stack size and saving memory usage.
 
-Since we already sort the particles based on how far they are from the center it makes sense to use the same approach to the binning, we created bins based on how far from the center the particles are and created one bin "for each ring of particles (clumbsy needs fixing)".
+Since we already sort the particles based on how far they are from the center it makes sense to use the same approach to the binning, we created bins based on how far from the center the particles are and created one bin "for each ring of particles (clumsy needs fixing)".
 
 <!-- pseudo code on how this was done -->
 Bin particles based on location
@@ -77,7 +77,7 @@ For bins
 
 <!-- IO -->
 <!-- account for angle when binning -->
-Currently we are only accounting for the distance from the center when binning the particles for updating the field. While this increased the performance and allowed us to do away with the memroy intensive OpenMP reduction it does come with some limitations. Firstly there is a limit on how many bins we can create this way, which will put a hard limit on the number of threads the operation can be distributed over. Ideally we would like to have more bins than we have threads to enable us to balance the load between the threads in since some bins will include significantly more work than others. One way to acomplish this would be to also account for the 
+Currently we are only accounting for the distance from the center when binning the particles for updating the field. While this increased the performance and allowed us to do away with the memory intensive OpenMP reduction it does come with some limitations. Firstly there is a limit on how many bins we can create this way, which will put a hard limit on the number of threads the operation can be distributed over. Ideally we would like to have more bins than we have threads to enable us to balance the load between the threads in since some bins will include significantly more work than others. One way to accomplish this would be to also account for the 
 
 
 
@@ -86,5 +86,4 @@ Currently we are only accounting for the distance from the center when binning t
 <!-- make a point about the modifications being in the master branch and ready to use -->
 
 
-// not te string used on marconi !!
-./configure --with-blas-lapack-dir=/cineca/prod/opt/compilers/intel/pe-xe-2017/binary/mkl --with-gnu-compilers=0 --with-vendor-compilers=intel --with-mpi-dir=/cineca/prod/opt/compilers/intel/pe-xe-2017/binary/impi/2017.3.196/ --CFLAGS="-O3 -xMIC-AVX2 -qopenmp" --CXXFLAGS="-O3 -xMIC-AVX2 -qopenmp" --FFLAGS="-O3 -xMIC-AVX2 -qopenmp" --with-debugging=0 --with-openmp=1 --with-threadsafety=1 --with-log=0  --with-batch
+
