@@ -41,20 +41,34 @@ Parts of the code relies on random number generation, which in the original vers
 
 ### Particle order in memory
 
-Examining the code using the VTune profiling tool we observed that a significant amout of time was spent in the function "writing the effects of the particles on the field" specificly the part of the code where the values are written out to memory. For each particle there is rougly XX values that need to be written, the values update are at least partially adjecent to eachother, but the order the particles are updated in is fairly random since they move significantly each time step. Since the order of the particles are random it will cause the program to jump around in memory when writing the data associated witht the particles, causing a significant amount of cache misses since the prefetcher cannot predic where the next memory access will go.
 <!-- Why -->
-
-
+Examining the code using the VTune profiling tool we observed that a significant amout of time was spent in the function "writing the effects of the particles on the field" specificly the part of the code where the values are written out to memory. For each particle there is rougly XX values that need to be written, the values update are at least partially adjecent to eachother, but the order the particles are updated in is fairly random since they move significantly each time step. Since the order of the particles are random it will cause the program to jump around in memory when writing the data associated witht the particles, causing a significant amount of cache misses since the prefetcher cannot predic where the next memory access will go.
 
 <!-- what we did -->
-If we simply reorder the particles based on their position we can easily improve the performance of the writes. This has to be done every iteration...
+If we simply reorder the particles based on their position we can easily improve the performance of the writes. This has to be done every iteration, meaning we cannot use a complex sorting algortihm since any performance gains from that would immediately be eclipsed by the runtime of the sorting. When sorting the particles we ... "Ronan fill in the base idea of the method", as it offers a good balance between runtime and performance increases.
 
 <!-- performance -->
 
 
 ### Binning particles to remove the need for OpenMP reductions
-<!-- pseudo code on how this was done -->
+<!-- why -->
+One of the major drawback of our OpenMP version was the reliance on reductions, due to how the code that sets up the particles effect on the field was structured, tha array for the field can have multiple threads update the same value at the same time, and the only way to solve that and maintain performance was to mark the entire array as a reduction variable, which increased the memory requirement of the code. 
+
 <!-- why did this work -->
+A better solution is to divide particles into speperate bins, each bin contains a subset of particles whos writes go to a specific part of the array. We can then for each bin create a thread than handles the particles within that bin, the thread would create its own subset of the array to where the writes would initially go, once the thread has processed all the particles the local chunk of the array would be written out to the global array, taking care only to allow one thread to write to the global array at one time. That way we completely eliminate the need to mark the array as a reduction variable, saving the need for a larger OpenMP stack size and saving memory usage.
+
+Since we already sort the particles based on how far they are from the center it makes sense to use the same approach to the binning, we created bins based on how far from the center the particles are and created one bin "for each ring of particles (clumbsy needs fixing)".
+
+<!-- pseudo code on how this was done -->
+Bin particles based on location
+For bins
+    Allocate local array
+    For particles
+        Write particles effect on field to array
+    #OMP atomic
+    Write local array to global
+
+<!-- performance -->
 
 ## Results (FR)
 <!-- original vs improved code -->
@@ -63,10 +77,14 @@ If we simply reorder the particles based on their position we can easily improve
 
 <!-- IO -->
 <!-- account for angle when binning -->
-Currently we are only accounting for the distance from the center when binning the particles for updating the field. While this increased the performance and allowed us to do away with the memroy intensive OpenMP reduction it does come with some limitations. Firstly there is a limit on how many bins we can create this way, which will put a hard limit on the number of threads the operation can be distributed over, for the cases we tested we get xx bins, which would put the hard limit on threads at that number. Ideally we would like to have more bins than we have threads to enable us to balance the load between the threads in since some bins will include significantly more work than others. One wau to acomplish this would be to alos account for the 
+Currently we are only accounting for the distance from the center when binning the particles for updating the field. While this increased the performance and allowed us to do away with the memroy intensive OpenMP reduction it does come with some limitations. Firstly there is a limit on how many bins we can create this way, which will put a hard limit on the number of threads the operation can be distributed over. Ideally we would like to have more bins than we have threads to enable us to balance the load between the threads in since some bins will include significantly more work than others. One way to acomplish this would be to also account for the 
 
 
 
 ## Conclusion (FR)
 <!-- what did we learn -->
 <!-- make a point about the modifications being in the master branch and ready to use -->
+
+
+// not te string used on marconi !!
+./configure --with-blas-lapack-dir=/cineca/prod/opt/compilers/intel/pe-xe-2017/binary/mkl --with-gnu-compilers=0 --with-vendor-compilers=intel --with-mpi-dir=/cineca/prod/opt/compilers/intel/pe-xe-2017/binary/impi/2017.3.196/ --CFLAGS="-O3 -xMIC-AVX2 -qopenmp" --CXXFLAGS="-O3 -xMIC-AVX2 -qopenmp" --FFLAGS="-O3 -xMIC-AVX2 -qopenmp" --with-debugging=0 --with-openmp=1 --with-threadsafety=1 --with-log=0  --with-batch
