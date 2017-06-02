@@ -14,7 +14,7 @@
 /
 
 &elm3
- tint=3e-8, ttint=6600e-8,
+ tint=3e-8, ttint=15e-8,
  nene=10, nbs=60,
  nchain=-2, queuetime=1000000
 /
