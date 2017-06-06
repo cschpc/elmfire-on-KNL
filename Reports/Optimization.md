@@ -1,21 +1,23 @@
-# Elmfire IPCC level 1 
+# Elmfire IPCC OpenMP effort
 
 ## Elmfire intro (RR/FR(will fix the computer sciency stuff))
 <!-- what it simulates -->
 <!-- how it is implemented -->
 <!-- I.e it’s a pure MPI fortran code, how it is distributed etc. -->
+Elmfire is implemented in Fortran 77/90. The code relies on MPI to paralelize and distribute the solver over multipe cores and compute nodes. External libs ?
+
 ## Test cases (RR)
 <!-- what test cases we used and how they compare to the real simulations -->
 ## Test systems (FR)
 <!-- what systems we used for testing and their setup -->
-Basic testing and development work was carried out on single a ninja development workstation, the machine contains one xxxx Intel Xeon Phi many core processor with 16GB of MCDRAM and xxx GB of DDR4 memory.
+Basic testing and development work was carried out on single a ninja development workstation, the machine contains one 7210 Intel Xeon Phi many core processor, clocked at 1.3 GHz with 16GB of MCDRAM and 96 GB of DDR4 memory.
 
 Final performance measurements were carried out on the Marconi at Cineca in Italy. The Xeon Phi partition of the Marconi cluster consists of 3600 compute nodes, each node contains one 68-core Intel Xeon Phi 7250 CPU clocked at 1.40 GHz, with 16 GB of MCDRAM and 96 GB of DDR4 memory. The interconnect between the compute nodes is based on 100 Gb/s Intel Omni path. 
 
 For all testing the MCDRAM memory was used in cache mode.
 
 ## Optimization  (FR/(RR fills in specific details))
-The original implementation requires "the field data" to be replicated on all active MPI ranks, which increases the memory requirement for the solver as the resolution of the simulation is increased. The memory requirement for the solver significantly restricts the resolution that can be use for the simulations. As such the goal with the effort was not to improve the performance but rather to attempt to reduce the memory usage to enable the code to efficiently utilize the intel many core architecture.
+The original implementation requires some elements of the simulation to be replicated on all active MPI ranks, which increases the memory requirement for the solver as the resolution of the simulation is increased. The memory requirement for the solver significantly restricts the resolution that can be use for the simulations. As such the primary goal with the effort was not to improve the performance but rather to attempt to reduce the memory usage to enable the code to efficiently utilize the intel many core architecture.
 
 ### OpenMP work
 Transitioning the code to a shared memory programming model has the possibility to reduce the memory usage, the idea would be to move the code from one MPI rank per core to a few MPI ranks per node and then be able to use OpenMP to further parallelize the code within the node to utilize all the cores within the node. Since that would reduce the number of MPI ranks we need to utilize all cores within a node it would also reduce the number of copies of the "field data" we need to maintain. 
@@ -29,12 +31,10 @@ The code also does a significant amount of reduction type operations, either val
 The main parts of the code doing reductions to arrays is the I/O and the part of the code that updates each particles effect on the field. The I/O functions are only called at specific intervals and as such are not as performance critical, in this case we solved the reductions into arrays using OpenMP atomic statements as not to increase the need for a large OpenMP stack size. The part that "updates the effect the particles have on the field updates not only the cell which the current particle resides in but also adjacent cells", when doing this in a shared memory parallel case multiple threads can easily end up wanting to update the same cells at the same time. Since we also determined this function is one of the ones where the majority of the time is spent we cannot solve these race conditions by applying atomic operations to these update since the performance penalty would be to great. In this case we need to use OpenMP reduction cause, even though it comes with an increase in the memory usage.
 
 <!-- scheduling -->
-The load distribution between the iterations of certain loops is also a thing worth examining in this code as we found a few loops that had an uneven load distribution. The main target here was the loop responsible for computing the interaction between particles. In this loop there is significantly more work that needs to be done in the beginning of it than in the end, leading to the first threads having to do more work and the last ones sitting idle most of the time in the case where the default static scheduling is used, so for this loop dynamic scheduling was applied.
+The load distribution between the iterations of certain loops is also a thing worth examining, in this code as we found one loops that had an uneven load distribution, the loop responsible for computing the interaction between particles. In this loop there is significantly more work that needs to be done in the beginning of it than in the end, leading to the first threads having to do more work and the last ones sitting idle most of the time in the case where the default static scheduling is used. Looking at the profiler results this becomes fairly obvious, so for this loop dynamic scheduling is a better option.
 
 <!-- random number generation -->
 Parts of the code relies on random number generation, which in the original version was not generated in a way that would have been safe to be called from multiple threads. We rewrote the random number generation to be safe to be called from multiple threads. This involved giving each thread its own random number generation and seeding these with a seed that was unique to that thread. 
-
-<!-- reproducibility of the results, do we need to mention anything about this ? basically the results change based on the number of OMP threads, but it did the same with MPI -->
 
 <!-- performance and memory usage -->
 
@@ -60,6 +60,7 @@ A better solution is to divide particles into separate bins, each bin contains a
 Since we already sort the particles based on how far they are from the center it makes sense to use the same approach to the binning, we created bins based on how far from the center the particles are and created one bin "for each ring of particles (clumsy needs fixing)".
 
 <!-- pseudo code on how this was done -->
+```
 Bin particles based on location
 For bins
     Allocate local array
@@ -67,17 +68,23 @@ For bins
         Write particles effect on field to array
     #OMP atomic
     Write local array to global
-
+```
 <!-- performance -->
 
 ## Results (FR)
 <!-- original vs improved code -->
+
+
 <!-- comment about what can now be simulated -->
+With the reduction in memory usage ...
+
 ## Further work (FR)
 
 <!-- IO -->
+The I/O functions of the code was largely ignored since it is rarely called and the development team is in the process of redesigning the I/O functionalliy.
+
 <!-- account for angle when binning -->
-Currently we are only accounting for the distance from the center when binning the particles for updating the field. While this increased the performance and allowed us to do away with the memory intensive OpenMP reduction it does come with some limitations. Firstly there is a limit on how many bins we can create this way, which will put a hard limit on the number of threads the operation can be distributed over. Ideally we would like to have more bins than we have threads to enable us to balance the load between the threads in since some bins will include significantly more work than others. One way to accomplish this would be to also account for the 
+Currently we are only accounting for the distance from the center when binning the particles for updating the field. While this allowed us to do away with the memory intensive OpenMP reduction it does come with some limitations. Firstly there is a limit on how many bins we can create this way, which will put a hard limit on the number of threads the operation can be distributed over. Ideally we would like to have more bins than we have threads to enable us to balance the load between the threads in since some bins will include significantly more work than others. One way to accomplish this would be to also account for the angle each particle sits at when binning, splitting the larger rings into segments. This would increase the number of bins and allow us to have more parallelism for that section and also allow us to better balance the load between threads for that section. 
 
 
 
