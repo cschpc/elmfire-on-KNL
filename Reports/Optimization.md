@@ -6,13 +6,15 @@ Elmfire is implemented in Fortran 77/90. It started its life as a Monte Carlo co
 Elmfire is a Particle In Cell (PIC) code with drift kinetic electrons, meaning that it allows more complex physics at smaller scales than other competing codes. While this addition provides new possibilities it also requires more memory and a smaller time step, making it highly computationally intensive. 
 
 ## Test cases
-The test cases provided have been optimized to study both grid and particle memory data. Case 1 was a small grid with average particle count, Case 2 a medium grid and again average particle count and Case 3 a large grid with a higher particle count. These have been used to push the limits of the OpenMP paradigm. 
+The test cases provided have been optimized to study both grid and particle memory data. Case 1 was a small grid with average particle count.
+
+<!--, Case 2 a medium grid and again average particle count and Case 3 a large grid with a higher particle count. These have been used to push the limits of the OpenMP paradigm. -->
 
 ## Test systems
 <!-- what systems we used for testing and their setup -->
 Basic testing and development work was carried out on single a ninja development workstation, the machine contains one 7210 Intel Xeon Phi many core processor, clocked at 1.3 GHz with 16GB of MCDRAM and 96 GB of DDR4 memory.
 
-Multi node measurements were carried out on the Marconi at Cineca in Italy. The Xeon Phi partition of the Marconi cluster consists of 3600 compute nodes, each node contains one 68-core Intel Xeon Phi 7250 CPU clocked at 1.40 GHz, with 16 GB of MCDRAM and 96 GB of DDR4 memory. The interconnect between the compute nodes is based on 100 Gb/s Intel Omni path. 
+<!--Multi node measurements were carried out on the Marconi at Cineca in Italy. The Xeon Phi partition of the Marconi cluster consists of 3600 compute nodes, each node contains one 68-core Intel Xeon Phi 7250 CPU clocked at 1.40 GHz, with 16 GB of MCDRAM and 96 GB of DDR4 memory. The interconnect between the compute nodes is based on 100 Gb/s Intel Omni path. -->
 
 For all testing the MCDRAM memory was used in cache mode.
 
@@ -31,7 +33,7 @@ The code also does a large number of reduction type operations, either values th
 The main parts of the code doing reductions to arrays is the I/O and the part of the code that updates each particles effect on the field. The I/O functions are only called at specific intervals and as such are not as performance critical, in this case we solved the reductions into arrays using OpenMP atomic statements as not to increase the need for a large OpenMP stack size. The part that updates the effect the particles have on the field updates not only the cell which the current particle resides in but also adjacent cells, when doing this in a shared memory parallel case multiple threads can easily end up wanting to update the same cells at the same time. Since we also determined this function is one of the ones where the majority of the time is spent we cannot solve these race conditions by applying atomic operations to these update since the performance penalty would be to great. In this case we need to use OpenMP reduction cause, even though it comes with an increase in the memory usage.
 
 <!-- scheduling -->
-The load distribution between the iterations of certain loops is also a thing worth examining, in this code as we found one loops that had an uneven load distribution, the loop responsible for computing the interaction between particles. In this loop there is significantly more work that needs to be done in the beginning of it than in the end, leading to the first threads having to do more work and the last ones sitting idle most of the time in the case where the default static scheduling is used. Looking at the profiler results this becomes fairly obvious, so for this loop dynamic scheduling is a better option.
+The load distribution between the iterations of certain loops is also a thing worth examining, in this code as we found a few loops that had an uneven load distribution, the main issue loop responsible for computing the interaction between particles. In this loop there is significantly more work that needs to be done in the beginning of it than in the end, leading to the first threads having to do more work and the last ones sitting idle most of the time in the case where the default static scheduling is used. Looking at the profiler results this becomes fairly obvious, so for this loop either dynamic scheduling, or static scheduling with a segment size of one, or is a better option.
 
 <!-- random number generation -->
 Parts of the code relies on random number generation, which in the original version was not generated in a way that would have been safe to be called from multiple threads. We rewrote the random number generation to be safe to be called from multiple threads. This involved giving each thread its own random number generation and seeding these with a seed that was unique to that thread. 
@@ -49,7 +51,7 @@ Sorting the particles simply by how far from the center they are we are able to 
 
 ### Binning particles to remove the need for OpenMP reductions
 <!-- why -->
-One of the major drawback of our OpenMP version was the reliance on reductions, due to how the code that sets up the particles effect on the field was structured, the array for the field can have multiple threads update the same value at the same time, and the only way to solve that and maintain performance was to mark the entire array as a reduction variable, which increased the memory requirement of the code. 
+One of the major drawback of our OpenMP version was the reliance on reductions. Due to how the code that sets up the particles effect on the field was structured, the array for the field can have multiple threads update the same value at the same time. The only way to solve that and maintain performance was to mark the entire array as a reduction variable, which increased the memory requirement of the code. 
 
 <!-- why did this work -->
 A better solution is to divide particles into separate bins, each bin contains a subset of particles whose writes go to a specific part of the array. We can then for each bin create a thread than handles the particles within that bin, the thread would create its own subset of the array to where the writes would initially go, once the thread has processed all the particles the local chunk of the array would be written out to the global array, taking care only to allow one thread to write to the global array at one time. That way we completely eliminate the need to mark the array as a reduction variable, saving the need for a larger OpenMP stack size and saving memory usage.
@@ -73,7 +75,7 @@ For bins
 
 Testing the original MPI only code with the small test case, and the ninja developer platform, we see that we can reduce the memory usage by lowering the number of MPI ranks but at a large reduction in the overall performance of the simulation. The time measured is for the fourth time step and the memory usage is the maximum memory usage as reported by Elmfires internal reporting.
 
-| MPI Ranks | Original   | Original memory |
+| MPI ranks | Time(s)    | Total memory    |
 |:---------:|------------|-----------------|
 | 32        | 349 sec    | 24.1 GB         |
 | 64        | 179 sec    | 37.0 GB         |
@@ -104,7 +106,7 @@ With the OpenMP version the goal is to be able to run the solver using fewer MPI
 
 The best performance is achieved when running on 128 threads, the original code took 136 seconds per time step when running with 128 threads and our optimized version also achieves its best performance when running on 128 threads. With the OpenMP version, and the optimizations carried out on the grid update function, we can achieve the same performance we previously did with 128 MPI ranks on 32 MPI ranks and running 4 OpenMP threads per rank. At 32 MPI rank we are able to reduce the memory usage of the program by 47%. If want to sacrifice some performance than can be further reduced by running 16 MPI ranks and 8 OpenMP threads, in that case we have 15% worse performance but 60% less memory required than the original version running on 128 MPI ranks.
 
-For the medium test case running on Marconi ...
+<!--For the medium test case running on Marconi ...-->
 
 <!-- comment about what can now be simulated -->
 With the reduction in memory usage the application user are able to scale up the simulations they are running. Previously the memory usage of the code was the main limiting factor on the type of simulation that could be run, the reactor size was limited to roughly 0.069m³. With the OpenMP version the reactor size can be scaled up, to a volume of around 21m³, enabling the team to simulate the Tore Supra reactor. 
